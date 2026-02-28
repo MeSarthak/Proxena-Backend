@@ -16,12 +16,16 @@ export const env = {
   PORT: parseInt(optional('PORT', '3000'), 10),
   API_BASE_URL: optional('API_BASE_URL', 'http://localhost:3000'),
 
+  // DATABASE_URL takes precedence over individual DB_* vars.
+  // Supabase provides a "Connection string" (Transaction mode, port 6543) in
+  // Project Settings → Database → Connection string.
   db: {
+    connectionString: process.env['DATABASE_URL'] ?? null,
     host: optional('DB_HOST', 'localhost'),
     port: parseInt(optional('DB_PORT', '5432'), 10),
-    name: required('DB_NAME'),
-    user: required('DB_USER'),
-    password: required('DB_PASSWORD'),
+    name: optional('DB_NAME', 'postgres'),
+    user: optional('DB_USER', 'postgres'),
+    password: optional('DB_PASSWORD', ''),
   },
 
   firebase: {

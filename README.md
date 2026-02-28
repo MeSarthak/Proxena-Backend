@@ -22,9 +22,38 @@ Node.js/Express REST API + WebSocket server that powers real-time English pronun
 ## Prerequisites
 
 - Node.js 20+
-- PostgreSQL 16 (or Docker — see below)
+- PostgreSQL 16 — either **Supabase** (recommended) or local Docker
 - A Firebase project with a service account
 - An Azure Cognitive Services Speech resource
+
+---
+
+## Database — Supabase Setup
+
+Proxena uses Supabase as its hosted PostgreSQL provider. The app connects via the standard `pg` driver using Supabase's connection pooler — no Supabase SDK required.
+
+### 1. Create a Supabase project
+
+Go to [supabase.com](https://supabase.com) → New project. Choose a region close to your users.
+
+### 2. Get the connection string
+
+In your Supabase project:
+- Go to **Project Settings → Database → Connection string**
+- Select the **Transaction** tab (port `6543`) — this is the pooled connection, suitable for serverless/Node apps
+- Copy the URI — it looks like:
+  ```
+  postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
+  ```
+- Set this as `DATABASE_URL` in your `.env`
+
+### 3. Run migrations
+
+```bash
+npm run migrate
+```
+
+The migration runner connects to Supabase and applies all SQL files from `src/migrations/` in order. Supabase's built-in SQL editor can also be used to run them manually.
 
 ---
 
@@ -42,11 +71,11 @@ npm install
 cp .env.example .env
 ```
 
-Fill in every value in `.env` — all fields are required at startup (see [Environment Variables](#environment-variables)).
+Set `DATABASE_URL` to your Supabase connection string. For local development without Supabase, comment out `DATABASE_URL` and fill in the `DB_*` vars instead (see [Environment Variables](#environment-variables)).
 
-### 3. Start PostgreSQL
+### 3. (Local only) Start PostgreSQL via Docker
 
-Using the bundled Docker Compose file:
+Skip this step if using Supabase.
 
 ```bash
 docker-compose up -d
@@ -56,8 +85,6 @@ This starts a PostgreSQL 16 container on `localhost:5432` with:
 - Database: `proxena`
 - User: `proxena_user`
 - Password: `proxena_pass`
-
-Update `DB_*` vars in `.env` to match if you use your own Postgres instance.
 
 ### 4. Run migrations
 
@@ -98,7 +125,7 @@ Health:    http://localhost:3000/health
 
 ## Environment Variables
 
-All variables are loaded from `.env` via `dotenv`. Required variables cause the process to exit with an error if missing.
+All variables are loaded from `.env` via `dotenv`. See `.env.example` for the full template.
 
 ```env
 # Server
@@ -106,12 +133,16 @@ PORT=3000
 NODE_ENV=development
 API_BASE_URL=https://api.yourdomain.com
 
-# PostgreSQL
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=proxena
-DB_USER=proxena_user
-DB_PASSWORD=proxena_pass
+# Database — Option A: Supabase (recommended)
+# Transaction-mode connection string from Supabase Dashboard → Settings → Database
+DATABASE_URL=postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
+
+# Database — Option B: local Postgres (leave DATABASE_URL unset)
+# DB_HOST=localhost
+# DB_PORT=5432
+# DB_NAME=proxena
+# DB_USER=postgres
+# DB_PASSWORD=yourpassword
 
 # Firebase Admin SDK
 FIREBASE_PROJECT_ID=your-firebase-project-id
@@ -131,6 +162,8 @@ PRO_PLAN_DAILY_SESSIONS=999
 # Session
 MAX_SESSION_DURATION_SECONDS=120
 ```
+
+`DATABASE_URL` takes priority over all `DB_*` vars. If both are present, `DATABASE_URL` wins.
 
 ---
 
