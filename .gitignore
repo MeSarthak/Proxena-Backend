@@ -1,3 +1,13 @@
 ```ignore
 description/
 ```
+node_modules
+```ignore
+.env
+dist/
+build/
+*.log
+.DS_Store
+.vscode/
+.idea/
+```
