@@ -47,4 +47,9 @@ export const env = {
   },
 
   maxSessionDurationSeconds: parseInt(optional('MAX_SESSION_DURATION_SECONDS', '120'), 10),
+
+  // Comma-separated list of allowed frontend origins for CORS.
+  // Example: https://app.yourdomain.com,https://www.yourdomain.com
+  // In development defaults to localhost:5173 (Vite default port).
+  corsOrigins: optional('CORS_ORIGINS', 'http://localhost:5173'),
 } as const;

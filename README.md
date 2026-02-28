@@ -133,6 +133,10 @@ PORT=3000
 NODE_ENV=development
 API_BASE_URL=https://api.yourdomain.com
 
+# CORS — comma-separated list of allowed frontend origins
+# Default (localhost:5173) is used when unset — no need to set in development
+CORS_ORIGINS=https://app.yourdomain.com
+
 # Database — Option A: Supabase (recommended)
 # Transaction-mode connection string from Supabase Dashboard → Settings → Database
 DATABASE_URL=postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
