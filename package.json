@@ -5,7 +5,7 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
-    "build": "tsc && npm run migrate",
+    "build": "tsc && node -e \"const fs=require('fs'),path=require('path');const src=path.join(__dirname,'src/migrations'),dst=path.join(__dirname,'dist/migrations');if(!fs.existsSync(dst))fs.mkdirSync(dst,{recursive:true});fs.readdirSync(src).filter(f=>f.endsWith('.sql')).forEach(f=>fs.copyFileSync(path.join(src,f),path.join(dst,f)));console.log('SQL migrations copied to dist/')\" && npm run migrate",
     "start": "node dist/server.js",
     "migrate": "node dist/db/migrate.js"
   },
