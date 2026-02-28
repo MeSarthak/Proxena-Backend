@@ -34,12 +34,9 @@ export const env = {
     privateKey: required('FIREBASE_PRIVATE_KEY').replace(/\\n/g, '\n'),
   },
 
-  // Azure Speech SDK is only used by the WebSocket handler which requires a
-  // persistent connection — not supported on Vercel serverless. These are
-  // optional so the REST API works without them being set.
   azure: {
-    speechKey: optional('AZURE_SPEECH_KEY', ''),
-    speechRegion: optional('AZURE_SPEECH_REGION', ''),
+    speechKey: required('AZURE_SPEECH_KEY'),
+    speechRegion: required('AZURE_SPEECH_REGION'),
   },
 
   limits: {
