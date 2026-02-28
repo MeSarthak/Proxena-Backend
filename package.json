@@ -4,12 +4,11 @@
   "description": "AI-powered pronunciation and speaking improvement platform backend",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
-    "build": "tsc",
-    "start": "node dist/server.js",
-    "migrate": "ts-node-dev --transpile-only src/db/migrate.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
+  "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+  "build": "tsc && npm run migrate",
+  "start": "node dist/server.js",
+  "migrate": "node dist/db/migrate.js"
+},
   "author": "",
   "license": "ISC",
   "dependencies": {
