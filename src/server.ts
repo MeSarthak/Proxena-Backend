@@ -8,15 +8,17 @@ import { pool } from './db/pool';
 async function main(): Promise<void> {
   // Verify DB connectivity on startup — hard timeout so the process never
   // hangs indefinitely if the DB host is unreachable (e.g. cross-region cold start).
+  // We do NOT exit on failure: the app can still serve the health endpoint and
+  // static routes; DB errors will surface per-request instead of blocking startup.
   try {
     const connectTimeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('DB connection timed out after 20s')), 20000)
+      setTimeout(() => reject(new Error('DB connection timed out after 15s')), 15000)
     );
     await Promise.race([pool.query('SELECT 1'), connectTimeout]);
-    console.log('PostgreSQL connected.');
+    console.log('PostgreSQL connected successfully.');
   } catch (err) {
-    console.error('Failed to connect to PostgreSQL:', err);
-    process.exit(1);
+    console.error('WARNING: Could not reach PostgreSQL on startup (will retry on first request):', err);
+    // Do NOT exit — keep the process alive so Azure health probe can succeed.
   }
 
   const server = http.createServer(app);
