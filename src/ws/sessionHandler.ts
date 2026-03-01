@@ -85,6 +85,11 @@ async function handleConnection(ws: WebSocket, req: IncomingMessage): Promise<vo
     return;
   }
 
+  // ── Determine max session duration based on plan ─────────────────────
+  const maxDurationSeconds = limitCheck.planType === 'pro'
+    ? env.proMaxSessionDurationSeconds
+    : env.maxSessionDurationSeconds;
+
   // ── Set up Azure audio stream ────────────────────────────────────────
   const audioInputStream = createAudioInputStream();
   const targetAccent = user.target_accent ?? 'en-US';
@@ -92,7 +97,7 @@ async function handleConnection(ws: WebSocket, req: IncomingMessage): Promise<vo
   // ── Max session duration enforcement ────────────────────────────────
   const maxDurationTimer = setTimeout(() => {
     audioInputStream.close(); // signals end of stream to Azure
-  }, env.maxSessionDurationSeconds * 1000);
+  }, maxDurationSeconds * 1000);
 
   // ── Start Azure pronunciation session (non-blocking) ─────────────────
   const azurePromise = runAzurePronunciationSession(

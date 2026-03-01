@@ -1,5 +1,13 @@
 // ─── Database row shapes ───────────────────────────────────────────────────
 
+export interface DbPlan {
+  id: bigint;
+  name: 'free' | 'pro';
+  display_name: string;
+  daily_sessions: number;
+  created_at: Date;
+}
+
 export interface DbUser {
   id: bigint;
   public_id: string;
@@ -7,6 +15,7 @@ export interface DbUser {
   email: string;
   native_language: string | null;
   target_accent: string | null;
+  plan_id: bigint;
   created_at: Date;
 }
 
@@ -38,17 +47,6 @@ export interface DbWordResult {
   word: string | null;
   accuracy_score: string | null;
   error_type: string | null;
-  created_at: Date;
-}
-
-export interface DbSubscription {
-  id: bigint;
-  public_id: string;
-  user_id: bigint;
-  plan_type: 'free' | 'pro' | null;
-  status: 'active' | 'expired' | 'cancelled' | null;
-  started_at: Date | null;
-  expires_at: Date | null;
   created_at: Date;
 }
 

@@ -40,13 +40,12 @@ export const env = {
   },
 
   limits: {
-    freeDailyMinutes: parseInt(optional('FREE_PLAN_DAILY_MINUTES', '5'), 10),
     freeDailySessions: parseInt(optional('FREE_PLAN_DAILY_SESSIONS', '3'), 10),
-    proDailyMinutes: parseInt(optional('PRO_PLAN_DAILY_MINUTES', '999'), 10),
     proDailySessions: parseInt(optional('PRO_PLAN_DAILY_SESSIONS', '999'), 10),
   },
 
-  maxSessionDurationSeconds: parseInt(optional('MAX_SESSION_DURATION_SECONDS', '120'), 10),
+  maxSessionDurationSeconds: parseInt(optional('MAX_SESSION_DURATION_SECONDS', '1800'), 10),
+  proMaxSessionDurationSeconds: parseInt(optional('PRO_MAX_SESSION_DURATION_SECONDS', '18000'), 10),
 
   // Comma-separated list of allowed frontend origins for CORS.
   // Example: https://app.yourdomain.com,https://www.yourdomain.com

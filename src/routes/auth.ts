@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate } from '../middleware/auth';
 import { pool } from '../db/pool';
 import { AppError } from '../middleware/errorHandler';
-import { DbSubscription, DbUsageTracking, DbUser } from '../types';
+import { DbPlan, DbUsageTracking, DbUser } from '../types';
 import { env } from '../config/env';
 
 const router = Router();
@@ -50,18 +50,18 @@ router.get('/me', authenticate, async (req: Request, res: Response, next: NextFu
   try {
     const user = req.user!;
 
-    // Get active subscription
-    const { rows: subRows } = await pool.query<DbSubscription>(
-      `SELECT plan_type, status, expires_at
-       FROM subscriptions
-       WHERE user_id = $1 AND status = 'active'
-       ORDER BY started_at DESC
-       LIMIT 1`,
+    // Get plan via users → plans join
+    const { rows: planRows } = await pool.query<Pick<DbPlan, 'name' | 'daily_sessions'>>(
+      `SELECT p.name, p.daily_sessions
+       FROM plans p
+       INNER JOIN users u ON u.plan_id = p.id
+       WHERE u.id = $1`,
       [user.id]
     );
 
-    const subscription = subRows[0];
-    const planType = subscription?.plan_type ?? 'free';
+    const plan = planRows[0];
+    const planType = plan?.name ?? 'free';
+    const dailySessionLimit = plan?.daily_sessions ?? env.limits.freeDailySessions;
 
     // Get today's usage
     const today = new Date().toISOString().slice(0, 10);
@@ -73,10 +73,6 @@ router.get('/me', authenticate, async (req: Request, res: Response, next: NextFu
     );
 
     const usage = usageRows[0];
-    const dailyLimit =
-      planType === 'pro' ? env.limits.proDailyMinutes : env.limits.freeDailyMinutes;
-    const dailySessionLimit =
-      planType === 'pro' ? env.limits.proDailySessions : env.limits.freeDailySessions;
 
     res.json({
       publicId: user.publicId,
@@ -85,13 +81,12 @@ router.get('/me', authenticate, async (req: Request, res: Response, next: NextFu
       targetAccent: user.targetAccent,
       subscription: {
         planType,
-        status: subscription?.status ?? 'active',
-        expiresAt: subscription?.expires_at ?? null,
+        status: 'active',
+        expiresAt: null,
       },
       usageToday: {
         minutesUsed: usage?.minutes_used ?? 0,
         sessionsCount: usage?.sessions_count ?? 0,
-        dailyLimit,
         dailySessionLimit,
       },
     });

@@ -1,32 +1,30 @@
 import { pool } from '../db/pool';
 import { env } from '../config/env';
-import { DbSubscription, DbUsageTracking } from '../types';
+import { DbPlan, DbUsageTracking } from '../types';
 
 export interface UsageLimitResult {
   allowed: boolean;
   planType: 'free' | 'pro';
   minutesUsed: number;
   sessionsCount: number;
-  dailyMinuteLimit: number;
   dailySessionLimit: number;
 }
 
 export async function checkUsageLimit(userId: bigint): Promise<UsageLimitResult> {
-  // Get active subscription
-  const { rows: subRows } = await pool.query<DbSubscription>(
-    `SELECT plan_type FROM subscriptions
-     WHERE user_id = $1 AND status = 'active'
-     ORDER BY started_at DESC LIMIT 1`,
+  // Get plan via users → plans join
+  const { rows: planRows } = await pool.query<Pick<DbPlan, 'name' | 'daily_sessions'>>(
+    `SELECT p.name, p.daily_sessions
+     FROM plans p
+     INNER JOIN users u ON u.plan_id = p.id
+     WHERE u.id = $1`,
     [userId]
   );
 
   const planType: 'free' | 'pro' =
-    subRows[0]?.plan_type === 'pro' ? 'pro' : 'free';
+    planRows[0]?.name === 'pro' ? 'pro' : 'free';
 
-  const dailyMinuteLimit =
-    planType === 'pro' ? env.limits.proDailyMinutes : env.limits.freeDailyMinutes;
   const dailySessionLimit =
-    planType === 'pro' ? env.limits.proDailySessions : env.limits.freeDailySessions;
+    planRows[0]?.daily_sessions ?? env.limits.freeDailySessions;
 
   // Get today's usage
   const today = new Date().toISOString().slice(0, 10);
@@ -39,10 +37,9 @@ export async function checkUsageLimit(userId: bigint): Promise<UsageLimitResult>
   const minutesUsed = usageRows[0]?.minutes_used ?? 0;
   const sessionsCount = usageRows[0]?.sessions_count ?? 0;
 
-  const allowed =
-    minutesUsed < dailyMinuteLimit && sessionsCount < dailySessionLimit;
+  const allowed = sessionsCount < dailySessionLimit;
 
-  return { allowed, planType, minutesUsed, sessionsCount, dailyMinuteLimit, dailySessionLimit };
+  return { allowed, planType, minutesUsed, sessionsCount, dailySessionLimit };
 }
 
 export async function incrementUsage(

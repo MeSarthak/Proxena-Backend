@@ -3,7 +3,7 @@ import { authenticate } from '../middleware/auth';
 import { pool } from '../db/pool';
 import { AppError } from '../middleware/errorHandler';
 import { checkUsageLimit } from '../services/usageEnforcement';
-import { DbExercise, DbSession, DbWordResult } from '../types';
+import { DbExercise, DbPlan, DbSession, DbWordResult } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { env } from '../config/env';
 
@@ -39,6 +39,16 @@ router.post('/start', authenticate, async (req: Request, res: Response, next: Ne
       );
     }
 
+    // Determine max session duration based on plan
+    const { rows: planRows } = await pool.query<Pick<DbPlan, 'name'>>(
+      `SELECT p.name FROM plans p INNER JOIN users u ON u.plan_id = p.id WHERE u.id = $1`,
+      [user.id]
+    );
+    const isPro = planRows[0]?.name === 'pro';
+    const maxDurationSeconds = isPro
+      ? env.proMaxSessionDurationSeconds
+      : env.maxSessionDurationSeconds;
+
     // Create session record
     const sessionPublicId = uuidv4();
     await pool.query(
@@ -52,7 +62,7 @@ router.post('/start', authenticate, async (req: Request, res: Response, next: Ne
     res.status(201).json({
       sessionPublicId,
       wsUrl,
-      maxDurationSeconds: env.maxSessionDurationSeconds,
+      maxDurationSeconds,
     });
   } catch (err) {
     if (err instanceof AppError) return next(err);
