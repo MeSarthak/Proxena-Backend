@@ -20,7 +20,8 @@ app.use(
       // Allow requests with no origin (e.g. curl, Postman, server-to-server)
       if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
-      callback(new Error(`CORS: origin '${origin}' is not allowed.`));
+      // Return false (not an Error) so cors sends a 403 instead of calling next(err)
+      return callback(null, false);
     },
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
