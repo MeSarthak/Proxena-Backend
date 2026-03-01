@@ -10,7 +10,8 @@ const poolConfig = env.db.connectionString
       ssl: { rejectUnauthorized: false },
       max: 20,
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
+      connectionTimeoutMillis: 15000,  // 15s — allows for cross-region latency
+      query_timeout: 30000,
     }
   : {
       host: env.db.host,
@@ -20,7 +21,8 @@ const poolConfig = env.db.connectionString
       password: env.db.password,
       max: 20,
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 2000,
+      connectionTimeoutMillis: 5000,
+      query_timeout: 10000,
     };
 
 export const pool = new Pool(poolConfig);

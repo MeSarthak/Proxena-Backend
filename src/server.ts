@@ -6,9 +6,13 @@ import { env } from './config/env';
 import { pool } from './db/pool';
 
 async function main(): Promise<void> {
-  // Verify DB connectivity on startup
+  // Verify DB connectivity on startup — hard timeout so the process never
+  // hangs indefinitely if the DB host is unreachable (e.g. cross-region cold start).
   try {
-    await pool.query('SELECT 1');
+    const connectTimeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('DB connection timed out after 20s')), 20000)
+    );
+    await Promise.race([pool.query('SELECT 1'), connectTimeout]);
     console.log('PostgreSQL connected.');
   } catch (err) {
     console.error('Failed to connect to PostgreSQL:', err);

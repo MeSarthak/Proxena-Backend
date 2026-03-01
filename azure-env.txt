@@ -1,0 +1,126 @@
+# ════════════════════════════════════════════════════════════════════════════════
+# Proxena Backend — Azure App Service Environment Variables
+#
+# HOW TO USE
+# ──────────────────────────────────────────────────────────────────────────────
+# Option A  Azure Portal
+#   App Service → Settings → Environment variables → "+ Add"
+#   Paste each NAME and VALUE individually. Click Save → Confirm.
+#
+# Option B  Azure CLI (bulk import from this file)
+#   1. Fill in every <REPLACE_...> placeholder below.
+#   2. Run:
+#        az webapp config appsettings set \
+#          --resource-group <your-resource-group> \
+#          --name <your-app-service-name> \
+#          --settings \
+#            NODE_ENV="production" \
+#            PORT="8080" \
+#            ... (one --settings flag or list them all)
+#
+#   Or use the JSON format accepted by:
+#        az webapp config appsettings set --settings @azure-env.json
+#   (convert this file to JSON if using that approach)
+#
+# IMPORTANT NOTES
+# ──────────────────────────────────────────────────────────────────────────────
+# • Do NOT commit this file to Git once you have filled in real secrets.
+# • Azure sets PORT automatically — the value below (8080) matches Azure's
+#   default for Linux Node apps. Do not set PORT to 3000 in production.
+# • FIREBASE_PRIVATE_KEY must keep its literal \n characters — do NOT expand
+#   them to real newlines when pasting into the Azure Portal text field.
+# ════════════════════════════════════════════════════════════════════════════════
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SERVER
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Must be "production" in Azure — enables prod logging and disables dev tools.
+NODE_ENV=production
+
+# Azure Linux App Service forwards traffic to this port.
+# The platform sets PORT automatically; set it here only to override.
+# Default for Node on Azure Linux = 8080.
+PORT=8080
+
+# Full HTTPS URL of this App Service — used to build WebSocket URLs returned
+# to the frontend (POST /v1/sessions/start → wsUrl field).
+# Replace with your actual App Service hostname.
+API_BASE_URL=https://<your-app-name>.azurewebsites.net
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CORS
+# Comma-separated list of frontend origins allowed to call this API.
+# Must include your Vercel frontend URL (no trailing slash).
+# ─────────────────────────────────────────────────────────────────────────────
+
+CORS_ORIGINS=https://<your-vercel-project>.vercel.app
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DATABASE  (Supabase — Transaction mode pooler)
+#
+# Find this in: Supabase Dashboard → Project Settings → Database
+#   → Connection string → Transaction mode  (port 6543)
+#
+# Format:
+#   postgresql://postgres.<project-ref>:<db-password>@aws-0-<region>.pooler.supabase.com:6543/postgres
+# ─────────────────────────────────────────────────────────────────────────────
+
+DATABASE_URL=postgresql://postgres.<REPLACE_SUPABASE_PROJECT_REF>:<REPLACE_DB_PASSWORD>@aws-0-<REPLACE_REGION>.pooler.supabase.com:6543/postgres
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FIREBASE ADMIN SDK
+#
+# Find these in: Firebase Console → Project Settings → Service accounts
+#   → Generate new private key  (downloads a JSON file)
+#
+# FIREBASE_PROJECT_ID   → "project_id"    field in the JSON
+# FIREBASE_CLIENT_EMAIL → "client_email"  field in the JSON
+# FIREBASE_PRIVATE_KEY  → "private_key"   field in the JSON
+#                         Keep the literal \n characters — do not expand them.
+# ─────────────────────────────────────────────────────────────────────────────
+
+FIREBASE_PROJECT_ID=proxena-1799e
+
+FIREBASE_CLIENT_EMAIL=<REPLACE_FIREBASE_CLIENT_EMAIL>
+
+# Paste the entire private_key value from the downloaded JSON.
+# It must start with -----BEGIN PRIVATE KEY----- and end with -----END PRIVATE KEY-----\n
+# In the Azure Portal text field, keep \n as literal backslash-n (not real newlines).
+FIREBASE_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\n<REPLACE_FIREBASE_PRIVATE_KEY_BODY>\n-----END PRIVATE KEY-----\n
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AZURE COGNITIVE SERVICES — SPEECH
+#
+# Find these in: Azure Portal → Your Speech resource → Keys and Endpoint
+#   Key 1 (or Key 2) → AZURE_SPEECH_KEY
+#   Location/Region  → AZURE_SPEECH_REGION  (e.g. eastus, westeurope)
+# ─────────────────────────────────────────────────────────────────────────────
+
+AZURE_SPEECH_KEY=<REPLACE_AZURE_SPEECH_KEY>
+
+AZURE_SPEECH_REGION=<REPLACE_AZURE_SPEECH_REGION>
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# USAGE LIMITS  (free and pro plan daily caps)
+# These match the defaults in code — only set them if you want different values.
+# ─────────────────────────────────────────────────────────────────────────────
+
+FREE_PLAN_DAILY_MINUTES=5
+FREE_PLAN_DAILY_SESSIONS=3
+PRO_PLAN_DAILY_MINUTES=999
+PRO_PLAN_DAILY_SESSIONS=999
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SESSION
+# Maximum duration (in seconds) before a pronunciation session is force-ended.
+# ─────────────────────────────────────────────────────────────────────────────
+
+MAX_SESSION_DURATION_SECONDS=120
