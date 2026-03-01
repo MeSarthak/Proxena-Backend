@@ -31,8 +31,18 @@ app.use(
 app.use(express.json());
 
 // Health check (no auth required)
+// Azure App Service uses this endpoint to verify the app is alive.
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  const mem = process.memoryUsage();
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: Math.floor(process.uptime()),
+    memory: {
+      heapUsedMb: Math.round(mem.heapUsed / 1024 / 1024),
+      heapTotalMb: Math.round(mem.heapTotal / 1024 / 1024),
+    },
+  });
 });
 
 // API v1 routes

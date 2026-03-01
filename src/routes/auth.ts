@@ -18,11 +18,11 @@ router.patch('/profile', authenticate, async (req: Request, res: Response, next:
     };
 
     if (!nativeLanguage && !targetAccent) {
-      return next(new AppError('VALIDATION_ERROR' as any, 'Provide at least one field to update.', 400));
+      return next(new AppError('VALIDATION_ERROR', 'Provide at least one field to update.', 400));
     }
 
     if (targetAccent && !VALID_ACCENTS.includes(targetAccent)) {
-      return next(new AppError('VALIDATION_ERROR' as any, `Invalid accent. Must be one of: ${VALID_ACCENTS.join(', ')}.`, 400));
+      return next(new AppError('VALIDATION_ERROR', `Invalid accent. Must be one of: ${VALID_ACCENTS.join(', ')}.`, 400));
     }
 
     const user = req.user!;
@@ -75,6 +75,8 @@ router.get('/me', authenticate, async (req: Request, res: Response, next: NextFu
     const usage = usageRows[0];
     const dailyLimit =
       planType === 'pro' ? env.limits.proDailyMinutes : env.limits.freeDailyMinutes;
+    const dailySessionLimit =
+      planType === 'pro' ? env.limits.proDailySessions : env.limits.freeDailySessions;
 
     res.json({
       publicId: user.publicId,
@@ -90,6 +92,7 @@ router.get('/me', authenticate, async (req: Request, res: Response, next: NextFu
         minutesUsed: usage?.minutes_used ?? 0,
         sessionsCount: usage?.sessions_count ?? 0,
         dailyLimit,
+        dailySessionLimit,
       },
     });
   } catch (err) {
