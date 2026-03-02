@@ -38,6 +38,9 @@ export interface DbSession {
   overall_accuracy: string | null;
   fluency_score: string | null;
   duration_seconds: number | null;
+  filler_count: number | null;
+  words_per_minute: string | null;
+  speech_health_score: string | null;
   created_at: Date;
 }
 
@@ -95,6 +98,10 @@ export interface WsSummaryMessage {
   overallAccuracy: number;
   fluencyScore: number;
   durationSeconds: number;
+  fillerCount: number;
+  wordsPerMinute: number;
+  speechHealthScore: number;
+  fillerWords: string[];
 }
 
 export interface WsErrorMessage {

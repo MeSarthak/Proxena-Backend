@@ -8,6 +8,9 @@ export interface SessionCompletionData {
   overallAccuracy: number;
   fluencyScore: number;
   durationSeconds: number;
+  fillerCount: number;
+  wordsPerMinute: number;
+  speechHealthScore: number;
   words: WordResultInput[];
 }
 
@@ -47,12 +50,23 @@ export async function writeSessionCompletion(data: SessionCompletionData): Promi
     // 2. Update session record
     await client.query(
       `UPDATE sessions
-       SET status           = 'completed',
-           overall_accuracy = $1,
-           fluency_score    = $2,
-           duration_seconds = $3
-       WHERE id = $4`,
-      [data.overallAccuracy, data.fluencyScore, data.durationSeconds, data.sessionId]
+       SET status              = 'completed',
+           overall_accuracy    = $1,
+           fluency_score       = $2,
+           duration_seconds    = $3,
+           filler_count        = $4,
+           words_per_minute    = $5,
+           speech_health_score = $6
+       WHERE id = $7`,
+      [
+        data.overallAccuracy,
+        data.fluencyScore,
+        data.durationSeconds,
+        data.fillerCount,
+        data.wordsPerMinute,
+        data.speechHealthScore,
+        data.sessionId,
+      ]
     );
 
     // 3. Increment usage_tracking

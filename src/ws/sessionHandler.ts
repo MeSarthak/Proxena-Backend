@@ -150,6 +150,9 @@ async function handleConnection(ws: WebSocket, req: IncomingMessage): Promise<vo
       overallAccuracy: result.overallAccuracy,
       fluencyScore: result.fluencyScore,
       durationSeconds: result.durationSeconds,
+      fillerCount: result.fillerCount,
+      wordsPerMinute: result.wordsPerMinute,
+      speechHealthScore: result.speechHealthScore,
       words: result.words,
     });
 
@@ -158,6 +161,10 @@ async function handleConnection(ws: WebSocket, req: IncomingMessage): Promise<vo
       overallAccuracy: result.overallAccuracy,
       fluencyScore: result.fluencyScore,
       durationSeconds: result.durationSeconds,
+      fillerCount: result.fillerCount,
+      wordsPerMinute: result.wordsPerMinute,
+      speechHealthScore: result.speechHealthScore,
+      fillerWords: result.fillerWords,
     });
   } catch (err) {
     clearTimeout(maxDurationTimer);

@@ -79,7 +79,8 @@ router.get('/history', authenticate, async (req: Request, res: Response, next: N
     const offset = (page - 1) * limit;
 
     const { rows: sessions } = await pool.query<DbSession>(
-      `SELECT public_id, overall_accuracy, fluency_score, duration_seconds, created_at
+      `SELECT public_id, overall_accuracy, fluency_score, duration_seconds,
+              filler_count, words_per_minute, speech_health_score, created_at
        FROM sessions
        WHERE user_id = $1 AND status = 'completed'
        ORDER BY created_at DESC
@@ -98,6 +99,9 @@ router.get('/history', authenticate, async (req: Request, res: Response, next: N
         overallAccuracy: s.overall_accuracy ? parseFloat(s.overall_accuracy) : null,
         fluencyScore: s.fluency_score ? parseFloat(s.fluency_score) : null,
         durationSeconds: s.duration_seconds,
+        fillerCount: s.filler_count ?? 0,
+        wordsPerMinute: s.words_per_minute ? parseFloat(s.words_per_minute) : null,
+        speechHealthScore: s.speech_health_score ? parseFloat(s.speech_health_score) : null,
         createdAt: s.created_at,
       })),
       pagination: {
@@ -118,7 +122,8 @@ router.get('/:publicId', authenticate, async (req: Request, res: Response, next:
     const { publicId } = req.params;
 
     const { rows: sessionRows } = await pool.query<DbSession>(
-      `SELECT id, public_id, overall_accuracy, fluency_score, duration_seconds, status, created_at
+      `SELECT id, public_id, overall_accuracy, fluency_score, duration_seconds,
+              filler_count, words_per_minute, speech_health_score, status, created_at
        FROM sessions
        WHERE public_id = $1 AND user_id = $2`,
       [publicId, user.id]
@@ -144,6 +149,9 @@ router.get('/:publicId', authenticate, async (req: Request, res: Response, next:
       overallAccuracy: session.overall_accuracy ? parseFloat(session.overall_accuracy) : null,
       fluencyScore: session.fluency_score ? parseFloat(session.fluency_score) : null,
       durationSeconds: session.duration_seconds,
+      fillerCount: session.filler_count ?? 0,
+      wordsPerMinute: session.words_per_minute ? parseFloat(session.words_per_minute) : null,
+      speechHealthScore: session.speech_health_score ? parseFloat(session.speech_health_score) : null,
       createdAt: session.created_at,
       words: words.map((w) => ({
         word: w.word,
