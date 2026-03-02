@@ -80,8 +80,11 @@ router.get('/history', authenticate, async (req: Request, res: Response, next: N
 
     const { rows: sessions } = await pool.query<DbSession>(
       `SELECT public_id, overall_accuracy, fluency_score, completeness_score,
-              prosody_score, duration_seconds,
-              filler_count, words_per_minute, speech_health_score, created_at
+              prosody_score, pronunciation_score, duration_seconds,
+              filler_count, words_per_minute, speech_health_score,
+              pause_count, total_pause_ms, avg_pause_ms, longest_pause_ms,
+              hesitation_score, mispronunciation_count, omission_count,
+              insertion_count, created_at
        FROM sessions
        WHERE user_id = $1 AND status = 'completed'
        ORDER BY created_at DESC
@@ -101,10 +104,19 @@ router.get('/history', authenticate, async (req: Request, res: Response, next: N
         fluencyScore: s.fluency_score ? parseFloat(s.fluency_score) : null,
         completenessScore: s.completeness_score ? parseFloat(s.completeness_score) : null,
         prosodyScore: s.prosody_score ? parseFloat(s.prosody_score) : null,
+        pronunciationScore: s.pronunciation_score ? parseFloat(s.pronunciation_score) : null,
         durationSeconds: s.duration_seconds,
         fillerCount: s.filler_count ?? 0,
         wordsPerMinute: s.words_per_minute ? parseFloat(s.words_per_minute) : null,
         speechHealthScore: s.speech_health_score ? parseFloat(s.speech_health_score) : null,
+        pauseCount: s.pause_count ?? 0,
+        totalPauseMs: s.total_pause_ms ?? 0,
+        avgPauseMs: s.avg_pause_ms ?? 0,
+        longestPauseMs: s.longest_pause_ms ?? 0,
+        hesitationScore: s.hesitation_score ? parseFloat(s.hesitation_score) : null,
+        mispronunciationCount: s.mispronunciation_count ?? 0,
+        omissionCount: s.omission_count ?? 0,
+        insertionCount: s.insertion_count ?? 0,
         createdAt: s.created_at,
       })),
       pagination: {
@@ -126,8 +138,11 @@ router.get('/:publicId', authenticate, async (req: Request, res: Response, next:
 
     const { rows: sessionRows } = await pool.query<DbSession>(
       `SELECT id, public_id, overall_accuracy, fluency_score, completeness_score,
-              prosody_score, duration_seconds,
-              filler_count, words_per_minute, speech_health_score, status, created_at
+              prosody_score, pronunciation_score, duration_seconds,
+              filler_count, words_per_minute, speech_health_score,
+              pause_count, total_pause_ms, avg_pause_ms, longest_pause_ms,
+              hesitation_score, mispronunciation_count, omission_count,
+              insertion_count, status, created_at
        FROM sessions
        WHERE public_id = $1 AND user_id = $2`,
       [publicId, user.id]
@@ -140,7 +155,7 @@ router.get('/:publicId', authenticate, async (req: Request, res: Response, next:
     const session = sessionRows[0];
 
     const { rows: words } = await pool.query<DbWordResult>(
-      `SELECT word, accuracy_score, error_type
+      `SELECT word, accuracy_score, error_type, phonemes, syllables, duration_ms
        FROM word_results
        WHERE session_id = $1
        ORDER BY id ASC`,
@@ -154,15 +169,27 @@ router.get('/:publicId', authenticate, async (req: Request, res: Response, next:
       fluencyScore: session.fluency_score ? parseFloat(session.fluency_score) : null,
       completenessScore: session.completeness_score ? parseFloat(session.completeness_score) : null,
       prosodyScore: session.prosody_score ? parseFloat(session.prosody_score) : null,
+      pronunciationScore: session.pronunciation_score ? parseFloat(session.pronunciation_score) : null,
       durationSeconds: session.duration_seconds,
       fillerCount: session.filler_count ?? 0,
       wordsPerMinute: session.words_per_minute ? parseFloat(session.words_per_minute) : null,
       speechHealthScore: session.speech_health_score ? parseFloat(session.speech_health_score) : null,
+      pauseCount: session.pause_count ?? 0,
+      totalPauseMs: session.total_pause_ms ?? 0,
+      avgPauseMs: session.avg_pause_ms ?? 0,
+      longestPauseMs: session.longest_pause_ms ?? 0,
+      hesitationScore: session.hesitation_score ? parseFloat(session.hesitation_score) : null,
+      mispronunciationCount: session.mispronunciation_count ?? 0,
+      omissionCount: session.omission_count ?? 0,
+      insertionCount: session.insertion_count ?? 0,
       createdAt: session.created_at,
       words: words.map((w) => ({
         word: w.word,
         accuracy: w.accuracy_score ? parseFloat(w.accuracy_score) : null,
         errorType: w.error_type,
+        phonemes: w.phonemes ?? null,
+        syllables: w.syllables ?? null,
+        durationMs: w.duration_ms ?? null,
       })),
     });
   } catch (err) {

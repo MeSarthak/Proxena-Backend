@@ -23,11 +23,21 @@ export interface AzureSessionResult {
   fluencyScore: number;
   completenessScore: number;
   prosodyScore: number;
+  pronunciationScore: number;
   durationSeconds: number;
   fillerCount: number;
   fillerWords: string[];
   wordsPerMinute: number;
   speechHealthScore: number;
+  // New analysis factors
+  pauseCount: number;
+  totalPauseMs: number;
+  avgPauseMs: number;
+  longestPauseMs: number;
+  hesitationScore: number;
+  mispronunciationCount: number;
+  omissionCount: number;
+  insertionCount: number;
 }
 
 export type WordCallback = (msg: WsWordMessage) => void;
@@ -59,7 +69,7 @@ export async function runAzurePronunciationSession(
     const pronunciationConfig = new sdk.PronunciationAssessmentConfig(
       referenceText,
       sdk.PronunciationAssessmentGradingSystem.HundredMark,
-      sdk.PronunciationAssessmentGranularity.Word,
+      sdk.PronunciationAssessmentGranularity.Phoneme, // ← upgraded from Word to Phoneme
       true // enable miscue detection
     );
     pronunciationConfig.enableProsodyAssessment = true;
@@ -76,8 +86,17 @@ export async function runAzurePronunciationSession(
     const segmentFluencies: number[] = [];
     const segmentCompletenessScores: number[] = [];
     const segmentProsodyScores: number[] = [];
-    const segmentDurations: number[] = []; // for weighted averaging
+    const segmentPronunciationScores: number[] = [];
     let durationMs = 0;
+
+    // Error type counters
+    let mispronunciationCount = 0;
+    let omissionCount = 0;
+    let insertionCount = 0;
+
+    // Word timing data for pause/hesitation analysis
+    // Each entry: { offsetMs, durationMs }
+    const wordTimings: { offsetMs: number; durationMs: number }[] = [];
 
     recognizer.recognized = (_sender, event) => {
       if (event.result.reason !== sdk.ResultReason.RecognizedSpeech) return;
@@ -89,16 +108,20 @@ export async function runAzurePronunciationSession(
       const segAccuracy = assessment.accuracyScore;
       const segFluency = assessment.fluencyScore;
       const segCompleteness = assessment.completenessScore;
-      // prosodyScore is available on the detailResult
+
+      // prosodyScore is on the detailResult
       const segProsody = (assessment.detailResult as any)?.PronunciationAssessment?.ProsodyScore
         ?? (assessment as any).prosodyScore
         ?? 0;
+
+      // pronunciationScore — Azure's own composite blend
+      const segPronunciation = assessment.pronunciationScore ?? 0;
 
       if (segAccuracy != null) segmentAccuracies.push(segAccuracy);
       if (segFluency != null) segmentFluencies.push(segFluency);
       if (segCompleteness != null) segmentCompletenessScores.push(segCompleteness);
       if (segProsody != null && segProsody > 0) segmentProsodyScores.push(segProsody);
-      segmentDurations.push(segDurationMs);
+      if (segPronunciation != null && segPronunciation > 0) segmentPronunciationScores.push(segPronunciation);
 
       // Duration in ticks (100ns each) → ms
       durationMs += segDurationMs;
@@ -111,10 +134,50 @@ export async function runAzurePronunciationSession(
 
         const status: WordStatus = deriveStatus(accuracy, errorType);
 
+        // ── Extract phoneme-level data ──────────────────────────────
+        const phonemes: { phoneme: string; accuracy: number }[] = [];
+        const rawPhonemes = (wordDetail as any).Phonemes ?? [];
+        for (const ph of rawPhonemes) {
+          phonemes.push({
+            phoneme: ph.Phoneme ?? '',
+            accuracy: ph.PronunciationAssessment?.AccuracyScore ?? 0,
+          });
+        }
+
+        // ── Extract syllable-level data ─────────────────────────────
+        const syllables: { syllable: string; accuracy: number; durationMs: number }[] = [];
+        const rawSyllables = (wordDetail as any).Syllables ?? [];
+        for (const syl of rawSyllables) {
+          syllables.push({
+            syllable: syl.Syllable ?? '',
+            accuracy: syl.PronunciationAssessment?.AccuracyScore ?? 0,
+            durationMs: syl.Duration ? syl.Duration / 10000 : 0,
+          });
+        }
+
+        // ── Extract word-level timing ───────────────────────────────
+        // Azure provides Offset and Duration in 100ns ticks
+        const wordOffsetMs = (wordDetail as any).Offset
+          ? (wordDetail as any).Offset / 10000
+          : 0;
+        const wordDurationMs = (wordDetail as any).Duration
+          ? (wordDetail as any).Duration / 10000
+          : 0;
+
+        wordTimings.push({ offsetMs: wordOffsetMs, durationMs: wordDurationMs });
+
+        // ── Count error types ───────────────────────────────────────
+        if (errorType === 'Mispronunciation') mispronunciationCount++;
+        else if (errorType === 'Omission') omissionCount++;
+        else if (errorType === 'Insertion') insertionCount++;
+
         collectedWords.push({
           word,
           accuracyScore: accuracy,
           errorType: errorType === 'None' ? null : errorType,
+          phonemes: phonemes.length > 0 ? phonemes : null,
+          syllables: syllables.length > 0 ? syllables : null,
+          durationMs: wordDurationMs > 0 ? Math.round(wordDurationMs) : null,
         });
 
         // Only count non-insertion words toward wordCount
@@ -151,12 +214,27 @@ export async function runAzurePronunciationSession(
       const prosodyScore = segmentProsodyScores.length > 0
         ? segmentProsodyScores.reduce((a, b) => a + b, 0) / segmentProsodyScores.length
         : 0;
+      const pronunciationScore = segmentPronunciationScores.length > 0
+        ? segmentPronunciationScores.reduce((a, b) => a + b, 0) / segmentPronunciationScores.length
+        : 0;
 
       const durationSeconds = Math.round(durationMs / 1000);
 
-      // ── Compute speech analytics ─────────────────────────────────────
+      // ── Compute pause/hesitation analysis from word timings ───────
+      const pauseAnalysis = computePauseAnalysis(wordTimings);
+
+      // ── Compute speech analytics ─────────────────────────────────
       const { fillerCount, fillerWords } = detectFillers(collectedWords);
       const wordsPerMinute = computeWPM(wordCount, fillerCount, durationSeconds);
+      const hesitationScore = computeHesitationScore(pauseAnalysis, durationSeconds);
+
+      // Error rate score: % of non-insertion words with no error
+      const nonInsertionWords = collectedWords.filter((w) => w.errorType !== 'Insertion');
+      const cleanWords = nonInsertionWords.filter((w) => !w.errorType);
+      const errorRateScore = nonInsertionWords.length > 0
+        ? (cleanWords.length / nonInsertionWords.length) * 100
+        : 100;
+
       const speechHealthScore = computeSpeechHealthScore(
         overallAccuracy,
         fluencyScore,
@@ -164,7 +242,9 @@ export async function runAzurePronunciationSession(
         prosodyScore,
         wordsPerMinute,
         fillerCount,
-        durationSeconds
+        durationSeconds,
+        hesitationScore,
+        errorRateScore
       );
 
       resolve({
@@ -173,11 +253,20 @@ export async function runAzurePronunciationSession(
         fluencyScore: parseFloat(fluencyScore.toFixed(2)),
         completenessScore: parseFloat(completenessScore.toFixed(2)),
         prosodyScore: parseFloat(prosodyScore.toFixed(2)),
+        pronunciationScore: parseFloat(pronunciationScore.toFixed(2)),
         durationSeconds,
         fillerCount,
         fillerWords,
         wordsPerMinute: parseFloat(wordsPerMinute.toFixed(2)),
         speechHealthScore: parseFloat(speechHealthScore.toFixed(2)),
+        pauseCount: pauseAnalysis.pauseCount,
+        totalPauseMs: Math.round(pauseAnalysis.totalPauseMs),
+        avgPauseMs: Math.round(pauseAnalysis.avgPauseMs),
+        longestPauseMs: Math.round(pauseAnalysis.longestPauseMs),
+        hesitationScore: parseFloat(hesitationScore.toFixed(2)),
+        mispronunciationCount,
+        omissionCount,
+        insertionCount,
       });
     };
 
@@ -203,6 +292,84 @@ function deriveStatus(accuracy: number, errorType: string | null): WordStatus {
   if (accuracy >= 85) return 'correct';
   if (accuracy >= 60) return 'partial';
   return 'incorrect';
+}
+
+// ─── Pause / Hesitation analysis ───────────────────────────────────────────
+
+interface PauseAnalysis {
+  pauseCount: number;
+  totalPauseMs: number;
+  avgPauseMs: number;
+  longestPauseMs: number;
+}
+
+/**
+ * Computes pause metrics from word timing data.
+ * A "pause" is a gap > 300ms between the end of one word and the start of the next.
+ * Normal inter-word gaps (~50-200ms) are expected and not counted.
+ */
+function computePauseAnalysis(
+  timings: { offsetMs: number; durationMs: number }[]
+): PauseAnalysis {
+  const PAUSE_THRESHOLD_MS = 300; // gaps > 300ms count as pauses
+  const pauses: number[] = [];
+
+  for (let i = 1; i < timings.length; i++) {
+    const prevEnd = timings[i - 1].offsetMs + timings[i - 1].durationMs;
+    const currStart = timings[i].offsetMs;
+    const gap = currStart - prevEnd;
+    if (gap > PAUSE_THRESHOLD_MS) {
+      pauses.push(gap);
+    }
+  }
+
+  return {
+    pauseCount: pauses.length,
+    totalPauseMs: pauses.reduce((a, b) => a + b, 0),
+    avgPauseMs: pauses.length > 0
+      ? pauses.reduce((a, b) => a + b, 0) / pauses.length
+      : 0,
+    longestPauseMs: pauses.length > 0 ? Math.max(...pauses) : 0,
+  };
+}
+
+/**
+ * Computes a 0-100 hesitation score.
+ * 100 = no hesitations (smooth speech). Lower = more hesitations.
+ *
+ * Factors:
+ * - Pause frequency (pauses per minute of speech)
+ * - Average pause duration (longer pauses = more penalty)
+ * - Longest pause (a single very long pause is penalized extra)
+ */
+function computeHesitationScore(
+  analysis: PauseAnalysis,
+  durationSeconds: number
+): number {
+  if (durationSeconds <= 0) return 100;
+
+  const durationMinutes = durationSeconds / 60;
+
+  // Frequency penalty: ideal is 0-2 pauses/min, penalize above that
+  const pausesPerMinute = analysis.pauseCount / durationMinutes;
+  // 0 pauses/min → 100, 8+ pauses/min → 0
+  const freqScore = Math.max(0, 100 - (pausesPerMinute / 8) * 100);
+
+  // Average duration penalty: avg > 1500ms is very hesitant
+  // 300ms avg → 100, 1500ms avg → 0
+  const avgScore = analysis.avgPauseMs <= 300
+    ? 100
+    : Math.max(0, 100 - ((analysis.avgPauseMs - 300) / 1200) * 100);
+
+  // Longest pause penalty: > 3000ms single pause is very bad
+  const longestScore = analysis.longestPauseMs <= 500
+    ? 100
+    : Math.max(0, 100 - ((analysis.longestPauseMs - 500) / 2500) * 100);
+
+  // Weighted: 50% frequency + 30% avg duration + 20% longest
+  return Math.min(100, Math.max(0,
+    freqScore * 0.50 + avgScore * 0.30 + longestScore * 0.20
+  ));
 }
 
 // ─── Speech analytics helpers ──────────────────────────────────────────────
@@ -253,12 +420,13 @@ function computeWPM(totalWords: number, fillerCount: number, durationSeconds: nu
 /**
  * Computes a composite Speech Health Score (0-100).
  *
- * Formula:
- *   30% Accuracy + 20% Fluency + 15% Completeness + 15% Prosody
- *   + 10% Speed consistency + 10% Filler control
+ * Formula (8 components):
+ *   25% Accuracy + 15% Fluency + 12% Completeness + 12% Prosody
+ *   + 12% Hesitation + 10% Speed consistency + 7% Filler control + 7% Error rate
  *
  * Speed score: 100 if WPM is in the ideal range (110–160), scales down linearly.
  * Filler score: 100 if no fillers, decreases by 20 per filler/minute.
+ * Error rate: percentage of words with no error type.
  */
 function computeSpeechHealthScore(
   accuracy: number,
@@ -267,17 +435,17 @@ function computeSpeechHealthScore(
   prosody: number,
   wpm: number,
   fillerCount: number,
-  durationSeconds: number
+  durationSeconds: number,
+  hesitationScore: number,
+  errorRateScore: number
 ): number {
   // Speed score: ideal range 110-160 WPM
   let speedScore: number;
   if (wpm >= 110 && wpm <= 160) {
     speedScore = 100;
   } else if (wpm < 110) {
-    // Linear scale: 0 WPM → 0, 110 WPM → 100
     speedScore = Math.max(0, (wpm / 110) * 100);
   } else {
-    // Linear scale: 160 WPM → 100, 250+ WPM → 0
     speedScore = Math.max(0, 100 - ((wpm - 160) / 90) * 100);
   }
 
@@ -286,14 +454,16 @@ function computeSpeechHealthScore(
   const fillersPerMinute = fillerCount / durationMinutes;
   const fillerScore = Math.max(0, 100 - fillersPerMinute * 20);
 
-  // Composite score with 6 components
+  // Composite score with 8 components
   const healthScore =
-    accuracy * 0.30 +
-    fluency * 0.20 +
-    completeness * 0.15 +
-    prosody * 0.15 +
+    accuracy * 0.25 +
+    fluency * 0.15 +
+    completeness * 0.12 +
+    prosody * 0.12 +
+    hesitationScore * 0.12 +
     speedScore * 0.10 +
-    fillerScore * 0.10;
+    fillerScore * 0.07 +
+    errorRateScore * 0.07;
 
   return Math.min(100, Math.max(0, healthScore));
 }

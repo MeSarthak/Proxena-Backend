@@ -99,6 +99,17 @@ async function handleConnection(ws: WebSocket, req: IncomingMessage): Promise<vo
     audioInputStream.close(); // signals end of stream to Azure
   }, maxDurationSeconds * 1000);
 
+  // ── Inactivity timeout — close stream if no audio data for 20s ──────
+  // This prevents sessions from hanging when client silently disconnects
+  // or user walks away without pressing stop.
+  let lastAudioTime = Date.now();
+  const INACTIVITY_TIMEOUT_MS = 20_000;
+  const inactivityTimer = setInterval(() => {
+    if (Date.now() - lastAudioTime > INACTIVITY_TIMEOUT_MS) {
+      try { audioInputStream.close(); } catch { /* already closed */ }
+    }
+  }, 5_000);
+
   // ── Start Azure pronunciation session (non-blocking) ─────────────────
   const azurePromise = runAzurePronunciationSession(
     audioInputStream,
@@ -113,6 +124,7 @@ async function handleConnection(ws: WebSocket, req: IncomingMessage): Promise<vo
     if (isBinary) {
       // Raw audio chunk — forward to Azure push stream
       // Normalise to a single Buffer then hand the underlying ArrayBuffer to Azure
+      lastAudioTime = Date.now();
       const buf = Buffer.isBuffer(data)
         ? data
         : Array.isArray(data)
@@ -135,6 +147,7 @@ async function handleConnection(ws: WebSocket, req: IncomingMessage): Promise<vo
 
   ws.on('close', () => {
     clearTimeout(maxDurationTimer);
+    clearInterval(inactivityTimer);
     // If client disconnects unexpectedly, close the audio stream
     try { audioInputStream.close(); } catch { /* already closed */ }
   });
@@ -143,6 +156,7 @@ async function handleConnection(ws: WebSocket, req: IncomingMessage): Promise<vo
   try {
     const result = await azurePromise;
     clearTimeout(maxDurationTimer);
+    clearInterval(inactivityTimer);
 
     await writeSessionCompletion({
       sessionId: session.id,
@@ -151,10 +165,19 @@ async function handleConnection(ws: WebSocket, req: IncomingMessage): Promise<vo
       fluencyScore: result.fluencyScore,
       completenessScore: result.completenessScore,
       prosodyScore: result.prosodyScore,
+      pronunciationScore: result.pronunciationScore,
       durationSeconds: result.durationSeconds,
       fillerCount: result.fillerCount,
       wordsPerMinute: result.wordsPerMinute,
       speechHealthScore: result.speechHealthScore,
+      pauseCount: result.pauseCount,
+      totalPauseMs: result.totalPauseMs,
+      avgPauseMs: result.avgPauseMs,
+      longestPauseMs: result.longestPauseMs,
+      hesitationScore: result.hesitationScore,
+      mispronunciationCount: result.mispronunciationCount,
+      omissionCount: result.omissionCount,
+      insertionCount: result.insertionCount,
       words: result.words,
     });
 
@@ -164,14 +187,24 @@ async function handleConnection(ws: WebSocket, req: IncomingMessage): Promise<vo
       fluencyScore: result.fluencyScore,
       completenessScore: result.completenessScore,
       prosodyScore: result.prosodyScore,
+      pronunciationScore: result.pronunciationScore,
       durationSeconds: result.durationSeconds,
       fillerCount: result.fillerCount,
       wordsPerMinute: result.wordsPerMinute,
       speechHealthScore: result.speechHealthScore,
       fillerWords: result.fillerWords,
+      pauseCount: result.pauseCount,
+      totalPauseMs: result.totalPauseMs,
+      avgPauseMs: result.avgPauseMs,
+      longestPauseMs: result.longestPauseMs,
+      hesitationScore: result.hesitationScore,
+      mispronunciationCount: result.mispronunciationCount,
+      omissionCount: result.omissionCount,
+      insertionCount: result.insertionCount,
     });
   } catch (err) {
     clearTimeout(maxDurationTimer);
+    clearInterval(inactivityTimer);
     console.error('Session processing error:', err);
     await markSessionFailed(session.id).catch(() => {});
     send({ type: 'error', message: 'INTERNAL_SERVER_ERROR' });

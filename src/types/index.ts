@@ -39,10 +39,19 @@ export interface DbSession {
   fluency_score: string | null;
   completeness_score: string | null;
   prosody_score: string | null;
+  pronunciation_score: string | null;
   duration_seconds: number | null;
   filler_count: number | null;
   words_per_minute: string | null;
   speech_health_score: string | null;
+  pause_count: number | null;
+  total_pause_ms: number | null;
+  avg_pause_ms: number | null;
+  longest_pause_ms: number | null;
+  hesitation_score: string | null;
+  mispronunciation_count: number | null;
+  omission_count: number | null;
+  insertion_count: number | null;
   created_at: Date;
 }
 
@@ -52,6 +61,9 @@ export interface DbWordResult {
   word: string | null;
   accuracy_score: string | null;
   error_type: string | null;
+  phonemes: object | null;
+  syllables: object | null;
+  duration_ms: number | null;
   created_at: Date;
 }
 
@@ -101,11 +113,20 @@ export interface WsSummaryMessage {
   fluencyScore: number;
   completenessScore: number;
   prosodyScore: number;
+  pronunciationScore: number;
   durationSeconds: number;
   fillerCount: number;
   wordsPerMinute: number;
   speechHealthScore: number;
   fillerWords: string[];
+  pauseCount: number;
+  totalPauseMs: number;
+  avgPauseMs: number;
+  longestPauseMs: number;
+  hesitationScore: number;
+  mispronunciationCount: number;
+  omissionCount: number;
+  insertionCount: number;
 }
 
 export interface WsErrorMessage {
@@ -125,6 +146,9 @@ export interface WordResultInput {
   word: string;
   accuracyScore: number;
   errorType: string | null;
+  phonemes: { phoneme: string; accuracy: number }[] | null;
+  syllables: { syllable: string; accuracy: number; durationMs: number }[] | null;
+  durationMs: number | null;
 }
 
 // ─── Error codes ───────────────────────────────────────────────────────────
