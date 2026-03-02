@@ -7,6 +7,8 @@ export interface SessionCompletionData {
   userId: bigint;
   overallAccuracy: number;
   fluencyScore: number;
+  completenessScore: number;
+  prosodyScore: number;
   durationSeconds: number;
   fillerCount: number;
   wordsPerMinute: number;
@@ -53,14 +55,18 @@ export async function writeSessionCompletion(data: SessionCompletionData): Promi
        SET status              = 'completed',
            overall_accuracy    = $1,
            fluency_score       = $2,
-           duration_seconds    = $3,
-           filler_count        = $4,
-           words_per_minute    = $5,
-           speech_health_score = $6
-       WHERE id = $7`,
+           completeness_score  = $3,
+           prosody_score       = $4,
+           duration_seconds    = $5,
+           filler_count        = $6,
+           words_per_minute    = $7,
+           speech_health_score = $8
+       WHERE id = $9`,
       [
         data.overallAccuracy,
         data.fluencyScore,
+        data.completenessScore,
+        data.prosodyScore,
         data.durationSeconds,
         data.fillerCount,
         data.wordsPerMinute,

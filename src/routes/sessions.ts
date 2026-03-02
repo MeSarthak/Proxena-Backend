@@ -79,7 +79,8 @@ router.get('/history', authenticate, async (req: Request, res: Response, next: N
     const offset = (page - 1) * limit;
 
     const { rows: sessions } = await pool.query<DbSession>(
-      `SELECT public_id, overall_accuracy, fluency_score, duration_seconds,
+      `SELECT public_id, overall_accuracy, fluency_score, completeness_score,
+              prosody_score, duration_seconds,
               filler_count, words_per_minute, speech_health_score, created_at
        FROM sessions
        WHERE user_id = $1 AND status = 'completed'
@@ -98,6 +99,8 @@ router.get('/history', authenticate, async (req: Request, res: Response, next: N
         publicId: s.public_id,
         overallAccuracy: s.overall_accuracy ? parseFloat(s.overall_accuracy) : null,
         fluencyScore: s.fluency_score ? parseFloat(s.fluency_score) : null,
+        completenessScore: s.completeness_score ? parseFloat(s.completeness_score) : null,
+        prosodyScore: s.prosody_score ? parseFloat(s.prosody_score) : null,
         durationSeconds: s.duration_seconds,
         fillerCount: s.filler_count ?? 0,
         wordsPerMinute: s.words_per_minute ? parseFloat(s.words_per_minute) : null,
@@ -122,7 +125,8 @@ router.get('/:publicId', authenticate, async (req: Request, res: Response, next:
     const { publicId } = req.params;
 
     const { rows: sessionRows } = await pool.query<DbSession>(
-      `SELECT id, public_id, overall_accuracy, fluency_score, duration_seconds,
+      `SELECT id, public_id, overall_accuracy, fluency_score, completeness_score,
+              prosody_score, duration_seconds,
               filler_count, words_per_minute, speech_health_score, status, created_at
        FROM sessions
        WHERE public_id = $1 AND user_id = $2`,
@@ -148,6 +152,8 @@ router.get('/:publicId', authenticate, async (req: Request, res: Response, next:
       status: session.status,
       overallAccuracy: session.overall_accuracy ? parseFloat(session.overall_accuracy) : null,
       fluencyScore: session.fluency_score ? parseFloat(session.fluency_score) : null,
+      completenessScore: session.completeness_score ? parseFloat(session.completeness_score) : null,
+      prosodyScore: session.prosody_score ? parseFloat(session.prosody_score) : null,
       durationSeconds: session.duration_seconds,
       fillerCount: session.filler_count ?? 0,
       wordsPerMinute: session.words_per_minute ? parseFloat(session.words_per_minute) : null,

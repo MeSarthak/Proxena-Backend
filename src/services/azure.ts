@@ -21,6 +21,8 @@ export interface AzureSessionResult {
   words: WordResultInput[];
   overallAccuracy: number;
   fluencyScore: number;
+  completenessScore: number;
+  prosodyScore: number;
   durationSeconds: number;
   fillerCount: number;
   fillerWords: string[];
@@ -68,23 +70,38 @@ export async function runAzurePronunciationSession(
     pronunciationConfig.applyTo(recognizer);
 
     const collectedWords: WordResultInput[] = [];
-    let totalAccuracy = 0;
     let wordCount = 0;
-    let fluencyScore = 0;
+    // Accumulate Azure's own segment-level scores (weighted averages)
+    const segmentAccuracies: number[] = [];
+    const segmentFluencies: number[] = [];
+    const segmentCompletenessScores: number[] = [];
+    const segmentProsodyScores: number[] = [];
+    const segmentDurations: number[] = []; // for weighted averaging
     let durationMs = 0;
 
     recognizer.recognized = (_sender, event) => {
       if (event.result.reason !== sdk.ResultReason.RecognizedSpeech) return;
 
       const assessment = sdk.PronunciationAssessmentResult.fromResult(event.result);
+      const segDurationMs = event.result.duration / 10000; // ticks (100ns) → ms
 
-      // Accumulate fluency from each recognized segment
-      if (assessment.fluencyScore) {
-        fluencyScore = assessment.fluencyScore; // last segment's score (Azure gives rolling value)
-      }
+      // Use Azure's own weighted scores per segment (NOT custom averages)
+      const segAccuracy = assessment.accuracyScore;
+      const segFluency = assessment.fluencyScore;
+      const segCompleteness = assessment.completenessScore;
+      // prosodyScore is available on the detailResult
+      const segProsody = (assessment.detailResult as any)?.PronunciationAssessment?.ProsodyScore
+        ?? (assessment as any).prosodyScore
+        ?? 0;
 
-      // Duration in ticks (100ns each) → seconds
-      durationMs += event.result.duration / 10000;
+      if (segAccuracy != null) segmentAccuracies.push(segAccuracy);
+      if (segFluency != null) segmentFluencies.push(segFluency);
+      if (segCompleteness != null) segmentCompletenessScores.push(segCompleteness);
+      if (segProsody != null && segProsody > 0) segmentProsodyScores.push(segProsody);
+      segmentDurations.push(segDurationMs);
+
+      // Duration in ticks (100ns each) → ms
+      durationMs += segDurationMs;
 
       const wordDetails = assessment.detailResult?.Words ?? [];
       for (const wordDetail of wordDetails) {
@@ -100,8 +117,10 @@ export async function runAzurePronunciationSession(
           errorType: errorType === 'None' ? null : errorType,
         });
 
-        totalAccuracy += accuracy;
-        wordCount++;
+        // Only count non-insertion words toward wordCount
+        if (errorType !== 'Insertion') {
+          wordCount++;
+        }
 
         // Real-time word feedback
         onWord({ type: 'word', word, accuracy, status });
@@ -118,7 +137,21 @@ export async function runAzurePronunciationSession(
 
     recognizer.sessionStopped = () => {
       recognizer.stopContinuousRecognitionAsync();
-      const overallAccuracy = wordCount > 0 ? totalAccuracy / wordCount : 0;
+
+      // Use Azure's own weighted accuracy (average across segments) instead of custom mean
+      const overallAccuracy = segmentAccuracies.length > 0
+        ? segmentAccuracies.reduce((a, b) => a + b, 0) / segmentAccuracies.length
+        : 0;
+      const fluencyScore = segmentFluencies.length > 0
+        ? segmentFluencies.reduce((a, b) => a + b, 0) / segmentFluencies.length
+        : 0;
+      const completenessScore = segmentCompletenessScores.length > 0
+        ? segmentCompletenessScores.reduce((a, b) => a + b, 0) / segmentCompletenessScores.length
+        : 0;
+      const prosodyScore = segmentProsodyScores.length > 0
+        ? segmentProsodyScores.reduce((a, b) => a + b, 0) / segmentProsodyScores.length
+        : 0;
+
       const durationSeconds = Math.round(durationMs / 1000);
 
       // ── Compute speech analytics ─────────────────────────────────────
@@ -126,7 +159,9 @@ export async function runAzurePronunciationSession(
       const wordsPerMinute = computeWPM(wordCount, fillerCount, durationSeconds);
       const speechHealthScore = computeSpeechHealthScore(
         overallAccuracy,
-        fluencyScore || 0,
+        fluencyScore,
+        completenessScore,
+        prosodyScore,
         wordsPerMinute,
         fillerCount,
         durationSeconds
@@ -135,7 +170,9 @@ export async function runAzurePronunciationSession(
       resolve({
         words: collectedWords,
         overallAccuracy: parseFloat(overallAccuracy.toFixed(2)),
-        fluencyScore: parseFloat((fluencyScore || 0).toFixed(2)),
+        fluencyScore: parseFloat(fluencyScore.toFixed(2)),
+        completenessScore: parseFloat(completenessScore.toFixed(2)),
+        prosodyScore: parseFloat(prosodyScore.toFixed(2)),
         durationSeconds,
         fillerCount,
         fillerWords,
@@ -162,8 +199,9 @@ export function createAudioInputStream(): sdk.PushAudioInputStream {
 
 function deriveStatus(accuracy: number, errorType: string | null): WordStatus {
   if (errorType === 'Omission') return 'skipped';
-  if (accuracy >= 80) return 'correct';
-  if (accuracy >= 50) return 'partial';
+  if (errorType === 'Insertion') return 'incorrect'; // extra words not in reference
+  if (accuracy >= 85) return 'correct';
+  if (accuracy >= 60) return 'partial';
   return 'incorrect';
 }
 
@@ -216,7 +254,8 @@ function computeWPM(totalWords: number, fillerCount: number, durationSeconds: nu
  * Computes a composite Speech Health Score (0-100).
  *
  * Formula:
- *   40% Accuracy + 30% Fluency + 20% Speed consistency + 10% Filler control
+ *   30% Accuracy + 20% Fluency + 15% Completeness + 15% Prosody
+ *   + 10% Speed consistency + 10% Filler control
  *
  * Speed score: 100 if WPM is in the ideal range (110–160), scales down linearly.
  * Filler score: 100 if no fillers, decreases by 20 per filler/minute.
@@ -224,6 +263,8 @@ function computeWPM(totalWords: number, fillerCount: number, durationSeconds: nu
 function computeSpeechHealthScore(
   accuracy: number,
   fluency: number,
+  completeness: number,
+  prosody: number,
   wpm: number,
   fillerCount: number,
   durationSeconds: number
@@ -245,12 +286,14 @@ function computeSpeechHealthScore(
   const fillersPerMinute = fillerCount / durationMinutes;
   const fillerScore = Math.max(0, 100 - fillersPerMinute * 20);
 
-  // Composite score
+  // Composite score with 6 components
   const healthScore =
-    accuracy * 0.4 +
-    fluency * 0.3 +
-    speedScore * 0.2 +
-    fillerScore * 0.1;
+    accuracy * 0.30 +
+    fluency * 0.20 +
+    completeness * 0.15 +
+    prosody * 0.15 +
+    speedScore * 0.10 +
+    fillerScore * 0.10;
 
   return Math.min(100, Math.max(0, healthScore));
 }

@@ -37,6 +37,8 @@ export interface DbSession {
   status: 'pending' | 'completed' | 'failed';
   overall_accuracy: string | null;
   fluency_score: string | null;
+  completeness_score: string | null;
+  prosody_score: string | null;
   duration_seconds: number | null;
   filler_count: number | null;
   words_per_minute: string | null;
@@ -97,6 +99,8 @@ export interface WsSummaryMessage {
   type: 'summary';
   overallAccuracy: number;
   fluencyScore: number;
+  completenessScore: number;
+  prosodyScore: number;
   durationSeconds: number;
   fillerCount: number;
   wordsPerMinute: number;
