@@ -9,8 +9,8 @@ async function main() {
   const { rows } = await pool.query(`
     SELECT public_id, title, category, difficulty,
        CASE 
-         WHEN LENGTH(text_content) < 150 THEN 'short'
-         WHEN LENGTH(text_content) >= 150 AND LENGTH(text_content) < 300 THEN 'medium'
+         WHEN LENGTH(text_content) < 200 THEN 'short'
+         WHEN LENGTH(text_content) >= 200 AND LENGTH(text_content) < 450 THEN 'medium'
          ELSE 'long'
        END as duration
     FROM exercises
