@@ -9,7 +9,7 @@ const router = Router();
 // GET /exercises?category=&difficulty=
 router.get('/', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { category, difficulty } = req.query;
+    const { category, difficulty, duration } = req.query;
 
     const conditions: string[] = [];
     const params: unknown[] = [];
@@ -22,11 +22,24 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
       params.push(difficulty);
       conditions.push(`difficulty = $${params.length}`);
     }
+    
+    if (duration === 'short') {
+      conditions.push(`LENGTH(text_content) < 150`);
+    } else if (duration === 'medium') {
+      conditions.push(`LENGTH(text_content) >= 150 AND LENGTH(text_content) < 300`);
+    } else if (duration === 'long') {
+      conditions.push(`LENGTH(text_content) >= 300`);
+    }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    const { rows } = await pool.query<DbExercise>(
-      `SELECT public_id, title, category, difficulty
+    const { rows } = await pool.query<DbExercise & { duration: string }>(
+      `SELECT public_id, title, category, difficulty,
+         CASE 
+           WHEN LENGTH(text_content) < 150 THEN 'short'
+           WHEN LENGTH(text_content) >= 150 AND LENGTH(text_content) < 300 THEN 'medium'
+           ELSE 'long'
+         END as duration
        FROM exercises
        ${where}
        ORDER BY created_at ASC`,
@@ -41,6 +54,7 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
           title: e.title ?? '',
           category: e.category,
           difficulty: e.difficulty,
+          duration: e.duration,
         }))
     );
   } catch (err) {
